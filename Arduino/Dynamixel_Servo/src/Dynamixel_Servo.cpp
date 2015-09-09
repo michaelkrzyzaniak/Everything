@@ -1,10 +1,9 @@
 #include "Dynamixel_Servo.h"
-#include <avr/delay.h>
 #include <Arduino.h>
 
 /*--------------------------------------------------------------------------------------------*/
-#define HALF_DUPLEX_DIRECTION_OUTPUT HIGH
-#define HALF_DUPLEX_DIRECTION_INPUT  LOW
+#define HALF_DUPLEX_DIRECTION_OUTPUT LOW
+#define HALF_DUPLEX_DIRECTION_INPUT  HIGH
 HardwareSerial* servo_serial = NULL;
 int servo_half_duplex_direction_pin;
 
@@ -128,6 +127,46 @@ servo_error_t _servo_set              (uint8_t id, servo_register_t reg, float  
 servo_error_t servo_set              (uint8_t id, servo_register_t reg, float  val, int timeout_ms)
 {  
   return _servo_set(id, reg, val, timeout_ms, true);  
+}
+
+/*--------------------------------------------------------------------------------------------*/
+servo_error_t servo_set_multiple     (uint8_t ids[], servo_register_t start_reg, float values[], int num_ids, int num_values_per_servo)
+{  
+  int bytes_per_value[num_values_per_servo];
+  int* b = bytes_per_value;
+  int bytes_per_servo = 0;
+  int i, j, k;
+  int addr = (int)start_reg;
+  
+  uint8_t  raw_bytes[num_ids * 2]; //worst case scenario
+  uint8_t* r = raw_bytes;
+  int      raw_anything;
+  
+  for(i=0; i<num_values_per_servo; i++)
+    {
+      *b = (servo_register_is_word((servo_register_t)addr)) ? 2 : 1;
+      bytes_per_servo += *b;
+      addr += *b++;
+    }
+  
+  for(i=0; i<num_ids; i++)
+    {
+      addr = start_reg;
+      b = bytes_per_value;
+      for(j=0; j<num_values_per_servo; j++)
+        {
+          raw_anything = servo_anything_to_raw((servo_register_t)addr,  *values++);
+
+          for(k=0; k<*b; k++)
+            {
+              *r++ = (raw_anything & 0xFF);
+              raw_anything >>= 8;
+            }
+          addr += *b++;
+        }
+    }
+  
+  return servo_set_multiple_raw(ids, start_reg, raw_bytes, num_ids, bytes_per_servo);
 }
 
 /*--------------------------------------------------------------------------------------------*/
@@ -275,6 +314,27 @@ servo_error_t servo_prepare_raw_page (uint8_t id, servo_register_t reg, uint8_t 
 }
 
 /*--------------------------------------------------------------------------------------------*/
+servo_error_t servo_set_multiple_raw(uint8_t ids[], servo_register_t start_reg, uint8_t bytes[], int num_ids, int bytes_per_servo)
+{
+  int i, j;
+  uint8_t num_params = num_ids * (bytes_per_servo + 1) + 2;
+  uint8_t params[num_params];
+  uint8_t *p = params;
+  
+  *p++ = start_reg;
+  *p++ = bytes_per_servo;
+  
+  for(i=0; i<num_ids; i++)
+    {   
+      *p++ = *ids++;
+      for(j=0; j<bytes_per_servo; j++)
+        *p++ = *bytes++;
+    }    
+    
+  return servo_send_instruction(SERVO_BROADCAST_ID, SERVO_INSTRUCTION_SYNC_WRITE, params, num_params, NULL, 0, 0); 
+}
+
+/*--------------------------------------------------------------------------------------------*/
 void* servo_get_conversion_function_for_register(servo_register_t reg, bool to_raw)
 {
   int (*result)() = NULL;
@@ -331,7 +391,7 @@ void* servo_get_conversion_function_for_register(servo_register_t reg, bool to_r
           (int (*)()) servo_raw_to_i_gain;
         break;
         
-      case SERVO_REGISTER_P_GAIN              :
+      case SERVO_REGISTER_P_GAIN             :
         result = (to_raw) ?
           (int (*)()) servo_p_gain_to_raw:
           (int (*)()) servo_raw_to_p_gain;
@@ -354,7 +414,7 @@ void* servo_get_conversion_function_for_register(servo_register_t reg, bool to_r
         result = (to_raw) ?
           (int (*)()) servo_radians_per_sec_2_to_raw:
           (int (*)()) servo_raw_to_radians_per_sec_2;
-        break;      
+        break;
       
       default:
         result = NULL;
@@ -384,7 +444,7 @@ int  servo_baud_bps_to_raw(float baud)
   uint8_t result = 0xFF;
   float actual_baud;
   
-  if(baud <= 2000000)
+  if((baud <= 2000000) && (baud >= 8000))
     result = (int)(((2000000.0 / (float)baud) - 1) + 0.5);
    
   else switch((unsigned) baud)
@@ -485,7 +545,13 @@ int   servo_radians_per_sec_to_raw   (float rad)
   if(is_counter_clockwise) rad *= -1; 
   int result = (rad * (60 / (0.114 * 6.28318531))) + 0.5;
   if(result > 1023) result = 1023;
-  if(result == 0) result = 1024;
+  
+  //wheel mode needs this
+  //if(result == 0) result = 1024;
+  
+  //joint mode needs this
+  if(result == 0) result = 1;
+  
   if(is_counter_clockwise) result |= 0x400;
   
   return result;
@@ -508,13 +574,7 @@ float servo_raw_to_radians_per_sec   (int raw)
   result = raw * (0.114 * 6.28318531 / 60.0); // rad / sec
   if(is_negative) result *= -1;
   
-  //return result;
-  
   return (raw > 0) ? result : SERVO_MAX_SPEED;
-  
-  //1022 = 12.20
-  //1023 = 12.21
-  //1024 = 12.22
 }
 
 /*--------------------------------------------------------------------------------------------*/
@@ -529,10 +589,6 @@ float servo_raw_to_radians_per_sec_2   (int raw)
 {
   float SERVO_MAX_ACCEL = 39;
   return (raw > 0) ? raw * 0.14979598 : SERVO_MAX_ACCEL;
-  
-  //253 = 37.90
-  //254 = 38.04
-  //255 = 38.19
 }
 
 /*--------------------------------------------------------------------------------------------*/
@@ -565,14 +621,17 @@ servo_error_t servo_send_instruction(uint8_t id, servo_instruction_t instruction
   *d++ = ~checksum;
   
   digitalWrite(servo_half_duplex_direction_pin, HALF_DUPLEX_DIRECTION_OUTPUT);
+  //Delay was necessary when on solderless breadboard, but not on custom PCB (probably stray capacitance)
+  //delayMicroseconds(10);
   
-  while(servo_serial->available()) servo_serial->read(); //remove junk from buffer
-
-  servo_serial->write(data, data_size-1);
+  while(servo_serial->available()) servo_serial->read(); //remove junk from buffer (there shouldn't be any)
+  servo_serial->write(data, data_size);
+  
   //Datasheet says to disable and enable interrupts here but the given reason seems
   //unnecessary, and without interrupts, flush won't know that the last byte has been transmitted
+  //servo_serial->write(data, data_size-1);
   //cli();
-  servo_serial->write(data[data_size - 1]);
+  //servo_serial->write(data[data_size - 1]);
   servo_serial->flush(); //this waits for all data to be transmitted (does not flush input buffer)
   digitalWrite(servo_half_duplex_direction_pin, HALF_DUPLEX_DIRECTION_INPUT);
   //sei();
@@ -591,15 +650,15 @@ servo_error_t servo_get_response    (uint8_t id, uint8_t result[], int result_si
   uint8_t* d = data;
   servo_error_t error = SERVO_NO_ERROR;
   uint8_t checksum;
+  timeout_ms *= 100;
 
   while ((d - data) < data_size)
     {
       if(servo_serial->available())
         *d++ = servo_serial->read();
       else if(timeout_ms-- > 0)
-        //_delay_ms(1);
-        delay(1);
-      else 
+        delayMicroseconds(10);
+      else
         break;
     }
   

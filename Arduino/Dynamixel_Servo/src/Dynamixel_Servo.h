@@ -22,7 +22,7 @@
  *  Arduino source.
  *
  * @version
- *  1.0 (March 2, 2014)
+ *  2.1 (Sept 8, 2015)
  *
  * @copyright
  *  This code is open-source and free for all. Enjoy! 
@@ -53,6 +53,8 @@
  *  http://support.robotis.com/en/product/dynamixel/communication/dxl_instruction.htm <br />
  *
  *  Change Log
+ *    2.0 adds support for SYNC_WRITE, and fixes bug with 8000 buad.
+ *    2.1 fixed some long-standing workarounds for shoddy hardware.
  *
  *  @bug
  *   When the motor is powered on, the value returned servo_get(SERVO_REGISTER_MOVING_SPEED)
@@ -337,6 +339,44 @@ servo_error_t servo_set              (uint8_t id, servo_register_t reg, float  v
 
 /*--------------------------------------------------------------------------------------------*/
 /*!
+ * @function    servo_set_multiple
+ * @abstract      Set the value of one or more registers in several servos at once. This is supported
+ *                by the hardware (SYNC_WRITE in the documentation) and is faster than setting 
+ *                them one at a time. You must be setting the same registers in all of the servos,
+ *                and the registers must be sequential.
+ * @param       ids
+ *                an array of the IDs of the servos whose registers you are trying to access.
+ * @param       start_reg
+ *                The lowest ot the servo's register that you are trying to access. 
+ *                The registers must be sequential. For 16-bit registers, 
+ *                it is not necessary to access the high and low bytes separately, as this
+ *                module 'knows' which registers are 16 bit, will access both of them in a 
+ *                single operation, and treat them as a single value. For instance, 
+ *                if start_reg is SERVO_REGISTER_GOAL_ANGLE and num_values_per_servo is 2,
+ *                this module will write 4 1-byte registers: 2 for the goal angle, and 
+ *                2 for the moving speed.
+ * @param       values
+ *                An array containing the desired values of the specified registers in physical units
+ *                (rather than the raw values defined in the servo's datasheet). The units must
+ *                be the following: bits-per-second, microseconds, radians, degrees-celcius,
+ *                percent-of-the-motor's-maximum-torque, gain-coefficient (for PID controller),
+ *                Volts, Amperes, radians-per-second, or radians-per-square-second, according to
+ *                the type of quantity being read. This metohod converts this to a raw value, 
+ *                and  attempts to write it to regs. The values should be in the following order:
+ *                first value for ids[0] ... nth value for ids[0],first value for ids[1] ... 
+ *                nth value for ids[1], etc. 
+ * @param       num_ids
+ *                the number of items in ids[].
+ * @param       num_values_per_servo
+ *                the number of items in values[] for each servo. num_values_per_servo * num_ids
+ *                must equal the total number of items in values.
+ * @result        The servos do not send a response packet, for this instruction
+ *                and this function returns SERVO_NO_ERROR, regardless of success;
+ */
+servo_error_t servo_set_multiple     (uint8_t ids[], servo_register_t start_reg, float values[], int num_ids, int num_values_per_servo);
+
+/*--------------------------------------------------------------------------------------------*/
+/*!
  * @function    servo_prepare
  * @abstract      Prepare to write the servo's registers. The value will be sent to the servo, 
  *                where it will be held in memory, but it will not be written to the appropriate 
@@ -404,6 +444,9 @@ servo_error_t servo_set_raw_page     (uint8_t id, servo_register_t reg, uint8_t 
 servo_error_t servo_prepare_raw_byte (uint8_t id, servo_register_t reg, uint8_t   value,    int timeout_ms);
 servo_error_t servo_prepare_raw_word (uint8_t id, servo_register_t reg, uint16_t  value,    int timeout_ms);
 servo_error_t servo_prepare_raw_page (uint8_t id, servo_register_t reg, uint8_t   values[], int num_bytes, int timeout_ms);
+
+servo_error_t servo_set_multiple_raw(uint8_t ids[], servo_register_t start_reg, uint8_t values[], int num_ids, int num_bytes_per_servo);
+servo_error_t servo_set_positions_and_speeds_raw(uint8_t ids[], servo_register_t start_reg, uint8_t values[], int num_ids, int num_bytes_per_servo);
 
 /*!
  * @functiongroup Raw to Physical Conversions

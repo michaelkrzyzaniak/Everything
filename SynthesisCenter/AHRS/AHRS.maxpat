@@ -217,7 +217,6 @@
 , 			{
 				"box" : 				{
 					"id" : "obj-14",
-					"int" : 1,
 					"maxclass" : "gswitch2",
 					"numinlets" : 2,
 					"numoutlets" : 2,
@@ -238,7 +237,7 @@
 					"numoutlets" : 1,
 					"outlettype" : [ "" ],
 					"patching_rect" : [ 75.0, 45.0, 375.0, 31.0 ],
-					"text" : "/julie/imu -2.378049 2.560976 -3.780488 -0.992676 -0.002441 -0.062988 -0.297436 0.161538 -0.710256 53.85"
+					"text" : "/julie/imu -2.317073 2.256098 -3.963415 0.30127 -0.08252 0.92041 -0.64359 0.225641 -0.341026 40.34412"
 				}
 
 			}
@@ -541,14 +540,14 @@
  ],
 		"dependency_cache" : [ 			{
 				"name" : "MadgwickAHRS.js",
-				"bootpath" : "/Users/michaelkrzyzaniak/Courses/8_Spring_2015/Synthesis",
+				"bootpath" : "/Users/michaelkrzyzaniak/Documents/Everything/SynthesisCenter/AHRS",
 				"patcherrelativepath" : ".",
 				"type" : "TEXT",
 				"implicit" : 1
 			}
 , 			{
 				"name" : "quat2euler.js",
-				"bootpath" : "/Users/michaelkrzyzaniak/Courses/8_Spring_2015/Synthesis",
+				"bootpath" : "/Users/michaelkrzyzaniak/Documents/Everything/SynthesisCenter/AHRS",
 				"patcherrelativepath" : ".",
 				"type" : "TEXT",
 				"implicit" : 1
